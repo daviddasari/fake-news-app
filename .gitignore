@@ -1,0 +1,31 @@
+Ignore python cache
+
+pycache/
+*.pyc
+
+Ignore OS files
+
+.DS_Store
+Thumbs.db
+
+Ignore virtual environments
+
+.venv/
+venv/
+env/
+
+Ignore large data files (just in case)
+
+*.csv
+*.xlsx
+*.xls
+*.joblib
+*.pkl
+
+--- BUT, allow our small sample files ---
+
+(The ! makes Git 'un-ignore' them)
+
+!true_sample_final.csv
+!fake_sample_final.csv
+!welfake_sample_final.csv
