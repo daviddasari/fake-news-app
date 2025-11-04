@@ -9,7 +9,7 @@ import seaborn as sns
 from sklearn.metrics import accuracy_score, confusion_matrix
 import requests
 import os
-import numpy as np # <-- 1. ADDED THIS IMPORT
+import numpy as np
 
 # --- Import the ML libraries ---
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -107,6 +107,17 @@ def load_data(file_path, **kwargs):
         st.error(f"Error reading {file_path}: {e}")
         return pd.DataFrame()
 
+# --- 1. ADD THIS NEW CACHED FUNCTION ---
+@st.cache_data
+def load_uploaded_csv(uploaded_file):
+    """Caches the uploaded CSV file to prevent re-reading on every rerun."""
+    try:
+        return pd.read_csv(uploaded_file)
+    except Exception as e:
+        st.error(f"An error occurred while processing the file: {e}")
+        return None
+# ----------------------------------------
+
 def process_isot_data(df_true, df_fake):
     if not df_true.empty and not df_fake.empty:
         df_true['label'] = 1
@@ -149,7 +160,6 @@ df_evaluation = process_test_data(load_data(EVAL_FILE_PATH)) # <-- LOAD NEW FILE
 st.title("📰 The Real Fake News Detector")
 
 # --- Create Tabs ---
-# <-- 2. UPDATED THIS LINE
 tab1, tab2, tab3, tab4, tab_viz, tab5 = st.tabs([
     "📰 News Analyzer", 
     "📊 Visual Insights", 
@@ -329,7 +339,7 @@ with tab4:
 
 
 # --- Tab (NEW): CSV Visualizer ---
-# <-- 3. ADDED THIS ENTIRE BLOCK
+# --- 2. THIS ENTIRE BLOCK IS UPDATED ---
 with tab_viz:
     st.header("🚀 Instant CSV Visualizer")
     st.write("Drag and drop a CSV file here to see basic visualizations.")
@@ -338,10 +348,14 @@ with tab_viz:
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv", key="csv_visualizer")
 
     if uploaded_file is not None:
-        try:
-            # Read CSV
-            df_viz = pd.read_csv(uploaded_file)
-            st.success("File uploaded and read successfully!")
+        # Use the cached function to load the data
+        # This function will only run the first time the file is uploaded
+        # or when a new file is uploaded.
+        df_viz = load_uploaded_csv(uploaded_file)
+        
+        # Check if the dataframe was loaded successfully
+        if df_viz is not None:
+            st.success("File uploaded and cached successfully!")
             
             # Show dataframe preview
             st.subheader("Raw Data Preview")
@@ -409,9 +423,7 @@ with tab_viz:
                 st.markdown("---")
                 st.info("A Scatter Plot requires at least two numeric columns in your data.")
             
-        except Exception as e:
-            st.error(f"An error occurred while processing the file: {e}")
-
+# ----------------------------------------
 
 # --- Tab 5: About This Model ---
 with tab5:
@@ -436,3 +448,4 @@ with tab5:
             
     else:
         st.error("Could not load ISOT data.")
+
