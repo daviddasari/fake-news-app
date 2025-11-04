@@ -140,7 +140,17 @@ def get_value_counts(df, column):
     except Exception:
         # This can fail if the column has unhashable types like lists
         return None
-# ---------------------------------------------
+
+# --- NEW CACHED FUNCTION ---
+@st.cache_data
+def get_sliced_data_for_plotting(_df, columns, num_rows):
+    """Caches the data slicing for plotting."""
+    if not columns:
+        return pd.DataFrame()
+    # We use _df as the argument name because st.cache_data hashes based on arguments
+    # and df_viz (the object itself) will be the same, so this cache will work.
+    return _df[columns].head(num_rows)
+# ---------------------------
 
 def process_isot_data(df_true, df_fake):
     if not df_true.empty and not df_fake.empty:
@@ -366,7 +376,6 @@ with tab4:
 
 
 # --- Tab (NEW): CSV Visualizer ---
-# --- THIS ENTIRE BLOCK IS UPDATED ---
 with tab_viz:
     st.header("🚀 Instant CSV Visualizer")
     st.write("Drag and drop a CSV file here to see basic visualizations.")
@@ -403,21 +412,44 @@ with tab_viz:
             if not numeric_columns:
                 st.warning("No numeric columns found in this CSV for plotting line, area, or scatter charts.")
             
-            # 1. Line/Area Chart
+            # --- UPDATED LINE/AREA CHART BLOCK ---
             st.markdown("---")
             st.write("### Line / Area Chart")
             st.info("Best for time series or showing trends. Select one or more numeric columns.")
             
             if numeric_columns:
                 cols_to_plot = st.multiselect("Select numeric columns to plot", numeric_columns, key='viz_line_multi')
-                if cols_to_plot:
+                
+                if cols_to_plot: # Only show slider if columns are selected
+                    # --- ADDED SLIDER TO LIMIT DATA ---
+                    max_rows = len(df_viz)
+                    # Set a reasonable default (2000) that won't lag
+                    default_sample = min(max_rows, 2000) 
+                    
+                    sample_size = st.slider(
+                        "Limit data to plot (first N rows)", 
+                        min_value=min(100, max_rows), # Handle small files
+                        max_value=max_rows, 
+                        value=default_sample,
+                        step=100,
+                        key='viz_line_sampler',
+                        help="Reduces the number of points plotted to prevent browser lag. Default is 2000."
+                    )
+                    
+                    # Use the new cached function to get the sliced data
+                    data_to_plot = get_sliced_data_for_plotting(df_viz, cols_to_plot, sample_size)
+                    # --- END OF UPDATE ---
+                    
                     chart_type = st.radio("Select chart type", ["Line Chart", "Area Chart"], key='viz_line_radio')
+                    
+                    # Plot the *sampled* data, not the full dataframe
                     if chart_type == "Line Chart":
-                        st.line_chart(df_viz[cols_to_plot])
+                        st.line_chart(data_to_plot)
                     else:
-                        st.area_chart(df_viz[cols_to_plot])
+                        st.area_chart(data_to_plot)
             else:
                 st.info("This chart type requires numeric columns.")
+            # --- END OF UPDATED BLOCK ---
 
             # 2. Bar Chart (Value Counts)
             st.markdown("---")
@@ -448,7 +480,10 @@ with tab_viz:
                     y_axis = st.selectbox("Select Y-axis", [None] + numeric_columns, key='viz_scatter_y')
                 
                 if x_axis and y_axis:
-                    st.scatter_chart(df_viz, x=x_axis, y=y_axis)
+                    # Note: Scatter plots can also lag on large data.
+                    # We can apply the same .head(sample_size) logic here if needed.
+                    st.scatter_chart(df_viz.head(sample_size), x=x_axis, y=y_axis)
+                    st.caption(f"Showing scatter plot for first {sample_size} rows.")
             else:
                 st.markdown("---")
                 st.info("A Scatter Plot requires at least two numeric columns in your data.")
