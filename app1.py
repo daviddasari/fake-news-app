@@ -16,10 +16,10 @@ from sklearn.linear_model import LogisticRegression
 # ----------------------------------------
 
 # --- Config: LOCAL SAMPLE FILENAMES ---
-# These files MUST be in your GitHub repo.
 TRUE_CSV_PATH = "true_sample_final.csv"
 FAKE_CSV_PATH = "fake_sample_final.csv"
 WELFAKE_CSV_PATH = "welfake_sample_final.csv"
+EVAL_CSV_PATH = "evaluation_final.csv"  # <-- ADDED NEW FILE
 # ------------------------------------
 
 # --- NLTK Stopwords Setup ---
@@ -48,8 +48,6 @@ def load_and_train_model():
     It loads the LOCAL SAMPLE data, trains the model, and returns the model/vectorizer.
     """
     st.write("First-time setup: Loading sample data and training model...")
-    
-    # --- Load Data ---
     try:
         df_true = pd.read_csv(TRUE_CSV_PATH) 
         df_fake = pd.read_csv(FAKE_CSV_PATH)
@@ -60,108 +58,94 @@ def load_and_train_model():
         st.error(f"Error reading CSV files: {e}.")
         return None, None
 
-    # --- Create Labels (1=REAL, 0=FAKE) ---
     df_true['label'] = 1
     df_fake['label'] = 0
-
-    # --- Combine and Shuffle ---
     df = pd.concat([df_true, df_fake])
     df = df.sample(frac=1, random_state=42).reset_index(drop=True)
-
-    # --- Preprocess ---
     df = df.dropna(subset=['title'])
     df['cleaned_title'] = df['title'].apply(clean_text)
-
-    # --- Train/Test Split ---
     X = df['cleaned_title']
     y = df['label']
-    
-    # --- Vectorize ---
-    vectorizer = TfidfVectorizer(max_features=5000) # Reduced features for sample
+    vectorizer = TfidfVectorizer(max_features=5000)
     X_tfidf = vectorizer.fit_transform(X)
-
-    # --- Train Model ---
     model = LogisticRegression(max_iter=1000)
     model.fit(X_tfidf, y)
-
     st.success("Model trained on 10% sample data and cached successfully!")
     return model, vectorizer
 
-# --- DATA LOADING FOR VISUALIZATION ---
+# --- Data Loaders for Tabs ---
 @st.cache_data
-def load_visualization_data():
+def load_data(file_path, **kwargs):
     """
-    Loads and combines the CSV files for visualization.
+    Loads any CSV file.
     """
     try:
-        df_true = pd.read_csv(TRUE_CSV_PATH)
-        df_fake = pd.read_csv(FAKE_CSV_PATH)
-        
+        return pd.read_csv(file_path, **kwargs)
+    except FileNotFoundError:
+        st.error(f"Error: '{file_path}' not found in the GitHub repo.")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error reading {file_path}: {e}")
+        return pd.DataFrame()
+
+def process_isot_data(df_true, df_fake):
+    if not df_true.empty and not df_fake.empty:
         df_true['label'] = 1
         df_fake['label'] = 0
         df = pd.concat([df_true, df_fake])
-        
         df['label_name'] = df['label'].map({1: 'REAL', 0: 'FAKE'})
         if 'text' in df.columns:
             df['text_length'] = df['text'].astype(str).str.len()
-        
         return df.sample(frac=1, random_state=42).reset_index(drop=True)
-    except FileNotFoundError:
-        st.error(f"Error: '{TRUE_CSV_PATH}' or '{FAKE_CSV_PATH}' not found.")
-        return pd.DataFrame()
+    return pd.DataFrame()
 
-# --- DATA LOADING FOR CROSS-VALIDATION ---
-@st.cache_data
-def load_welfake_data():
-    """
-    Loads the welfake_sample_final.csv file for cross-validation.
-    """
-    try:
-        df = pd.read_csv(WELFAKE_CSV_PATH)
-        
-        # --- Auto-fix column names ---
-        column_map = {}
-        for col in df.columns:
-            col_cleaned = col.lower().strip() # Clean the column name
-            if col_cleaned == 'title':
-                column_map[col] = 'title'
-            if col_cleaned == 'label':
-                column_map[col] = 'label'
-        
-        if 'title' in column_map.values() and 'label' in column_map.values():
-            df = df.rename(columns=column_map)
-        
-        if 'title' not in df.columns or 'label' not in df.columns:
-            st.error(f"`{WELFAKE_CSV_PATH}` is missing 'title' or 'label' columns.")
-            return pd.DataFrame()
-            
+def process_test_data(df):
+    if df.empty:
         return df
-    except FileNotFoundError:
-        st.error(f"Error: '{WELFAKE_CSV_PATH}' not found.")
+    # --- Auto-fix column names ---
+    column_map = {}
+    for col in df.columns:
+        col_cleaned = col.lower().strip() # Clean the column name
+        if col_cleaned == 'title':
+            column_map[col] = 'title'
+        if col_cleaned == 'label':
+            column_map[col] = 'label'
+    
+    if 'title' in column_map.values() and 'label' in column_map.values():
+        df = df.rename(columns=column_map)
+    
+    if 'title' not in df.columns or 'label' not in df.columns:
+        st.error(f"Loaded file is missing 'title' or 'label' columns.")
         return pd.DataFrame()
+    
+    return df
 
 # --- Load all assets ---
 model, vectorizer = load_and_train_model()
-df_isot = load_visualization_data()
-df_welfake = load_welfake_data()
+df_isot = process_isot_data(load_data(TRUE_CSV_PATH), load_data(FAKE_CSV_PATH))
+df_welfake = process_test_data(load_data(WELFAKE_CSV_PATH))
+df_evaluation = process_test_data(load_data(EVAL_CSV_PATH)) # <-- LOAD NEW FILE
 
 # --- Main App UI ---
 st.title("📰 The Real Fake News Detector")
 
 # --- Create Tabs ---
-tab1, tab2, tab3, tab4 = st.tabs(["📰 News Analyzer", "📊 Visual Insights", "🔍 Cross-Validation", "ℹ️ About This Model"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📰 News Analyzer", 
+    "📊 Visual Insights", 
+    "🔍 Cross-Validation (WELFake)", 
+    "🧪 Final Evaluation",  # <-- NEW TAB
+    "ℹ️ About This Model"
+])
 
 # --- Tab 1: News Analyzer ---
 with tab1:
     st.header("Analyze a News Headline or Text")
-    
     st.sidebar.title("About This Analyzer")
     st.sidebar.info(
         "**Project: Fake News Detection**\n\n"
-        "This model is trained on a 10% sample of the **ISOT Dataset** "
-        "(which includes Reuters as 'REAL' news)."
+        "This model is trained on a 10% sample of the **ISOT Dataset**."
     )
-    
     st.sidebar.title("How to Use")
     st.sidebar.markdown(
         """
@@ -171,12 +155,7 @@ with tab1:
         """
     )
 
-    user_input = st.text_area(
-        "News Text", 
-        "", 
-        height=200, 
-        placeholder="Paste your news text here..."
-    )
+    user_input = st.text_area("News Text", "", height=200, placeholder="Paste your news text here...")
 
     if st.button("Analyze", type="primary"):
         if model and vectorizer:
@@ -199,8 +178,8 @@ with tab1:
 # --- Tab 2: Visual Insights ---
 with tab2:
     st.header("Visual Insights from the ISOT Training Data (10% Sample)")
-    
     if not df_isot.empty:
+        # ... (All the plotting code is the same, no changes here) ...
         st.subheader("1. Balance of Real vs. Fake News")
         fig1, ax1 = plt.subplots(figsize=(10, 5))
         sns.countplot(data=df_isot, x='label_name', ax=ax1, palette=["#E63946", "#457B9D"])
@@ -228,9 +207,9 @@ with tab2:
     else:
         st.error("Could not load ISOT data for visualization.")
 
-# --- Tab 3: Cross-Validation ---
+# --- Tab 3: Cross-Validation (WELFake) ---
 with tab3:
-    st.header("Cross-Dataset Validation Test (on 10% Sample)")
+    st.header("Cross-Dataset Validation Test (on 'WELFake' Sample)")
     st.write("How does our model (trained on ISOT) perform on the 'WELFake' dataset?")
 
     if not df_welfake.empty and model and vectorizer:
@@ -239,7 +218,6 @@ with tab3:
                 df_welfake = df_welfake.dropna(subset=['title', 'label'])
                 X_welfake = df_welfake['title'].apply(clean_text)
                 y_welfake_original = df_welfake['label'].astype(int) 
-                
                 y_welfake_true_flipped = y_welfake_original.map({0: 1, 1: 0})
                 
                 X_welfake_tfidf = vectorizer.transform(X_welfake)
@@ -258,15 +236,70 @@ with tab3:
                             xticklabels=['FAKE (Pred)', 'REAL (Pred)'],
                             yticklabels=['FAKE (Actual)', 'REAL (Actual)'])
                 st.pyplot(fig4)
-            
             except Exception as e:
                 st.error(f"An error occurred during cross-validation: {e}")
-            
     else:
         st.error("Could not run validation. `welfake_sample_final.csv` not found or model not loaded.")
 
-# --- Tab 4: About This Model ---
+# --- Tab 4: Final Evaluation (NEW TAB) ---
 with tab4:
+    st.header("Final Evaluation Test (on 'evaluation_final.csv')")
+    st.write("How does our model (trained on ISOT) perform on this new evaluation dataset?")
+
+    if not df_evaluation.empty and model and vectorizer:
+        with st.spinner(f"Running model on {len(df_evaluation)} 'evaluation_final' articles..."):
+            try:
+                # 1. Prepare Data
+                df_eval = df_evaluation.dropna(subset=['title', 'label'])
+                X_eval = df_eval['title'].apply(clean_text)
+                y_eval_original = df_eval['label'].astype(int) 
+                
+                # 2. Make Predictions
+                X_eval_tfidf = vectorizer.transform(X_eval)
+                y_eval_pred = model.predict(X_eval_tfidf)
+                
+                # --- Smart Label Checking ---
+                # Test 1: Assume labels MATCH (1=REAL, 0=FAKE)
+                accuracy_normal = accuracy_score(y_eval_original, y_eval_pred)
+                
+                # Test 2: Assume labels are FLIPPED (0=REAL, 1=FAKE)
+                y_eval_flipped = y_eval_original.map({0: 1, 1: 0})
+                accuracy_flipped = accuracy_score(y_eval_flipped, y_eval_pred)
+                
+                st.subheader("Label Scheme Analysis")
+                st.write("We automatically checked for inverted labels. The highest score is the correct one.")
+                
+                col1, col2 = st.columns(2)
+                col1.metric("Accuracy (Assuming 1=REAL)", f"{accuracy_normal * 100:.2f}%")
+                col2.metric("Accuracy (Assuming 0=REAL)", f"{accuracy_flipped * 100:.2f}%")
+
+                st.subheader("Final Validation Result")
+                if accuracy_flipped > accuracy_normal:
+                    st.success(f"True Accuracy: {accuracy_flipped * 100:.2f}%")
+                    st.info("Insight: This dataset uses inverted labels (0=REAL, 1=FAKE), just like 'WELFake'.")
+                    cm = confusion_matrix(y_eval_flipped, y_eval_pred)
+                    labels = ['FAKE (Actual)', 'REAL (Actual)']
+                else:
+                    st.success(f"True Accuracy: {accuracy_normal * 100:.2f}%")
+                    st.info("Insight: This dataset uses the same labels as our model (1=REAL, 0=FAKE).")
+                    cm = confusion_matrix(y_eval_original, y_eval_pred)
+                    labels = ['FAKE (Actual)', 'REAL (Actual)']
+
+                # Plot the correct confusion matrix
+                fig5, ax5 = plt.subplots(figsize=(8, 5))
+                sns.heatmap(cm, annot=True, fmt='d', ax=ax5, cmap='Greens',
+                            xticklabels=['FAKE (Pred)', 'REAL (Pred)'],
+                            yticklabels=labels)
+                st.pyplot(fig5)
+
+            except Exception as e:
+                st.error(f"An error occurred during evaluation: {e}")
+    else:
+        st.error("Could not run validation. `evaluation_final.csv` not found or model not loaded.")
+
+
+# --- Tab 5: About This Model ---
+with tab5:
     st.header("About Our Model (Trained on 10% Sample)")
     st.write(
         """
@@ -276,8 +309,6 @@ with tab4:
         
         - **REAL News (Label 1):** ~2,100 articles from Reuters.com
         - **FAKE News (Label 0):** ~2,300 articles from known fake news sources.
-        
-        The data is loaded locally from the GitHub repo.
         """
     )
     
@@ -290,4 +321,3 @@ with tab4:
             
     else:
         st.error("Could not load ISOT data.")
-
