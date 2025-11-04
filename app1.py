@@ -107,7 +107,7 @@ def load_data(file_path, **kwargs):
         st.error(f"Error reading {file_path}: {e}")
         return pd.DataFrame()
 
-# --- 1. ADD THIS NEW CACHED FUNCTION ---
+# --- CACHED FUNCTIONS FOR CSV VISUALIZER ---
 @st.cache_data
 def load_uploaded_csv(uploaded_file):
     """Caches the uploaded CSV file to prevent re-reading on every rerun."""
@@ -116,7 +116,31 @@ def load_uploaded_csv(uploaded_file):
     except Exception as e:
         st.error(f"An error occurred while processing the file: {e}")
         return None
-# ----------------------------------------
+
+@st.cache_data
+def get_df_description(df):
+    """Caches the .describe() calculation."""
+    return df.describe()
+
+@st.cache_data
+def get_all_columns(df):
+    """Caches the column list."""
+    return df.columns.tolist()
+
+@st.cache_data
+def get_numeric_columns(df):
+    """Caches the numeric column selection."""
+    return df.select_dtypes(include=np.number).columns.tolist()
+
+@st.cache_data
+def get_value_counts(df, column):
+    """Caches the .value_counts() calculation (the slowest part)."""
+    try:
+        return df[column].value_counts()
+    except Exception:
+        # This can fail if the column has unhashable types like lists
+        return None
+# ---------------------------------------------
 
 def process_isot_data(df_true, df_fake):
     if not df_true.empty and not df_fake.empty:
@@ -199,7 +223,10 @@ with tab1:
                 vectorized_input = vectorizer.transform([cleaned_input])
                 prediction = model.predict(vectorized_input)
                 probability = model.predict_proba(vectorized_input)
-                confidence = probability[0][prediction[0]] * 100
+                
+                # --- THIS IS THE FIX ---
+                confidence = probability[0][int(prediction[0])] * 100
+                # -----------------------
                 
                 if prediction[0] == 1:
                     st.success(f"**Prediction: REAL News** (Confidence: {confidence:.2f}%)")
@@ -339,7 +366,7 @@ with tab4:
 
 
 # --- Tab (NEW): CSV Visualizer ---
-# --- 2. THIS ENTIRE BLOCK IS UPDATED ---
+# --- THIS ENTIRE BLOCK IS UPDATED ---
 with tab_viz:
     st.header("🚀 Instant CSV Visualizer")
     st.write("Drag and drop a CSV file here to see basic visualizations.")
@@ -349,8 +376,6 @@ with tab_viz:
 
     if uploaded_file is not None:
         # Use the cached function to load the data
-        # This function will only run the first time the file is uploaded
-        # or when a new file is uploaded.
         df_viz = load_uploaded_csv(uploaded_file)
         
         # Check if the dataframe was loaded successfully
@@ -361,18 +386,19 @@ with tab_viz:
             st.subheader("Raw Data Preview")
             st.dataframe(df_viz.head())
             
-            # Show basic stats
+            # --- Use cached function for .describe() ---
             st.subheader("Data Description (Numeric Columns)")
             try:
-                st.write(df_viz.describe())
+                st.write(get_df_description(df_viz)) # CACHED
             except Exception as e:
                 st.info(f"Could not generate numeric description: {e}")
             
             # --- Visualization Options ---
             st.subheader("Create Visualizations")
             
-            all_columns = df_viz.columns.tolist()
-            numeric_columns = df_viz.select_dtypes(include=np.number).columns.tolist()
+            # --- Use cached functions for column lists ---
+            all_columns = get_all_columns(df_viz) # CACHED
+            numeric_columns = get_numeric_columns(df_viz) # CACHED
             
             if not numeric_columns:
                 st.warning("No numeric columns found in this CSV for plotting line, area, or scatter charts.")
@@ -398,11 +424,15 @@ with tab_viz:
             st.write("### Bar Chart (Value Counts)")
             st.info("Best for seeing the frequency of items in a single categorical column.")
             cat_col = st.selectbox("Select a column to see its value counts", [None] + all_columns, key='viz_bar_select')
+            
             if cat_col:
-                try:
-                    st.bar_chart(df_viz[cat_col].value_counts())
-                except Exception as e:
-                    st.error(f"Could not plot bar chart for '{cat_col}': {e}")
+                # --- Use cached function for .value_counts() ---
+                value_counts = get_value_counts(df_viz, cat_col) # CACHED
+                
+                if value_counts is not None:
+                    st.bar_chart(value_counts)
+                else:
+                    st.warning(f"Could not generate value counts for column '{cat_col}'. It might contain unhashable types like lists.")
 
 
             # 3. Scatter Plot (2 Variables)
