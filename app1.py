@@ -19,7 +19,7 @@ from sklearn.linear_model import LogisticRegression
 TRUE_CSV_PATH = "true_sample_final.csv"
 FAKE_CSV_PATH = "fake_sample_final.csv"
 WELFAKE_CSV_PATH = "welfake_sample_final.csv"
-EVAL_CSV_PATH = "evaluation_final.csv"  # <-- ADDED NEW FILE
+EVAL_FILE_PATH = "evaluation_final.xlsx"  # <-- Reads your Excel file
 # ------------------------------------
 
 # --- NLTK Stopwords Setup ---
@@ -58,18 +58,30 @@ def load_and_train_model():
         st.error(f"Error reading CSV files: {e}.")
         return None, None
 
+    # --- Create Labels (1=REAL, 0=FAKE) ---
     df_true['label'] = 1
     df_fake['label'] = 0
+
+    # --- Combine and Shuffle ---
     df = pd.concat([df_true, df_fake])
     df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+
+    # --- Preprocess ---
     df = df.dropna(subset=['title'])
     df['cleaned_title'] = df['title'].apply(clean_text)
+
+    # --- Train/Test Split ---
     X = df['cleaned_title']
     y = df['label']
-    vectorizer = TfidfVectorizer(max_features=5000)
+    
+    # --- Vectorize ---
+    vectorizer = TfidfVectorizer(max_features=5000) # Reduced features for sample
     X_tfidf = vectorizer.fit_transform(X)
+
+    # --- Train Model ---
     model = LogisticRegression(max_iter=1000)
     model.fit(X_tfidf, y)
+
     st.success("Model trained on 10% sample data and cached successfully!")
     return model, vectorizer
 
@@ -77,10 +89,18 @@ def load_and_train_model():
 @st.cache_data
 def load_data(file_path, **kwargs):
     """
-    Loads any CSV file.
+    Loads any CSV or Excel file.
     """
     try:
-        return pd.read_csv(file_path, **kwargs)
+        # --- THIS IS THE FIX ---
+        if file_path.endswith('.csv'):
+            return pd.read_csv(file_path, **kwargs)
+        elif file_path.endswith('.xlsx'):
+            return pd.read_excel(file_path, **kwargs)
+        else:
+            st.error(f"Error: Unknown file type for {file_path}. Please use .csv or .xlsx")
+            return pd.DataFrame()
+        # -----------------------
     except FileNotFoundError:
         st.error(f"Error: '{file_path}' not found in the GitHub repo.")
         return pd.DataFrame()
@@ -124,7 +144,7 @@ def process_test_data(df):
 model, vectorizer = load_and_train_model()
 df_isot = process_isot_data(load_data(TRUE_CSV_PATH), load_data(FAKE_CSV_PATH))
 df_welfake = process_test_data(load_data(WELFAKE_CSV_PATH))
-df_evaluation = process_test_data(load_data(EVAL_CSV_PATH)) # <-- LOAD NEW FILE
+df_evaluation = process_test_data(load_data(EVAL_FILE_PATH)) # <-- LOAD NEW FILE
 
 # --- Main App UI ---
 st.title("📰 The Real Fake News Detector")
@@ -141,11 +161,13 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # --- Tab 1: News Analyzer ---
 with tab1:
     st.header("Analyze a News Headline or Text")
+    
     st.sidebar.title("About This Analyzer")
     st.sidebar.info(
         "**Project: Fake News Detection**\n\n"
         "This model is trained on a 10% sample of the **ISOT Dataset**."
     )
+    
     st.sidebar.title("How to Use")
     st.sidebar.markdown(
         """
@@ -178,13 +200,15 @@ with tab1:
 # --- Tab 2: Visual Insights ---
 with tab2:
     st.header("Visual Insights from the ISOT Training Data (10% Sample)")
+    
     if not df_isot.empty:
-        # ... (All the plotting code is the same, no changes here) ...
+        # Plot 1
         st.subheader("1. Balance of Real vs. Fake News")
         fig1, ax1 = plt.subplots(figsize=(10, 5))
         sns.countplot(data=df_isot, x='label_name', ax=ax1, palette=["#E63946", "#457B9D"])
         st.pyplot(fig1)
 
+        # Plot 2
         st.subheader("2. News Subject Analysis")
         fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6), sharey=False)
         real_subjects = df_isot[df_isot['label'] == 1]['subject'].value_counts()
@@ -196,6 +220,7 @@ with tab2:
         plt.tight_layout()
         st.pyplot(fig2)
 
+        # Plot 3
         st.subheader("3. Article Length Distribution")
         if 'text_length' in df_isot.columns:
             df_filtered = df_isot[df_isot['text_length'] < 20000]
@@ -218,6 +243,8 @@ with tab3:
                 df_welfake = df_welfake.dropna(subset=['title', 'label'])
                 X_welfake = df_welfake['title'].apply(clean_text)
                 y_welfake_original = df_welfake['label'].astype(int) 
+                
+                # Flip labels (0=REAL, 1=FAKE) -> (1=REAL, 0=FAKE)
                 y_welfake_true_flipped = y_welfake_original.map({0: 1, 1: 0})
                 
                 X_welfake_tfidf = vectorizer.transform(X_welfake)
@@ -236,14 +263,16 @@ with tab3:
                             xticklabels=['FAKE (Pred)', 'REAL (Pred)'],
                             yticklabels=['FAKE (Actual)', 'REAL (Actual)'])
                 st.pyplot(fig4)
+            
             except Exception as e:
                 st.error(f"An error occurred during cross-validation: {e}")
+            
     else:
         st.error("Could not run validation. `welfake_sample_final.csv` not found or model not loaded.")
 
 # --- Tab 4: Final Evaluation (NEW TAB) ---
 with tab4:
-    st.header("Final Evaluation Test (on 'evaluation_final.csv')")
+    st.header("Final Evaluation Test (on 'evaluation_final.xlsx')")
     st.write("How does our model (trained on ISOT) perform on this new evaluation dataset?")
 
     if not df_evaluation.empty and model and vectorizer:
@@ -295,7 +324,7 @@ with tab4:
             except Exception as e:
                 st.error(f"An error occurred during evaluation: {e}")
     else:
-        st.error("Could not run validation. `evaluation_final.csv` not found or model not loaded.")
+        st.error("Could not run validation. `evaluation_final.xlsx` not found or model not loaded.")
 
 
 # --- Tab 5: About This Model ---
@@ -321,3 +350,4 @@ with tab5:
             
     else:
         st.error("Could not load ISOT data.")
+
