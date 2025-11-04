@@ -5,4 +5,3 @@ nltk
 matplotlib
 seaborn
 requests
-openpyxl

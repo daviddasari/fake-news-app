@@ -19,7 +19,7 @@ from sklearn.linear_model import LogisticRegression
 TRUE_CSV_PATH = "true_sample_final.csv"
 FAKE_CSV_PATH = "fake_sample_final.csv"
 WELFAKE_CSV_PATH = "welfake_sample_final.csv"
-EVAL_FILE_PATH = "evaluation_final.xlsx"  # <-- Reads your Excel file
+EVAL_FILE_PATH = "evaluation_final.csv"  # <-- Reads your new .csv file
 # ------------------------------------
 
 # --- NLTK Stopwords Setup ---
@@ -89,18 +89,16 @@ def load_and_train_model():
 @st.cache_data
 def load_data(file_path, **kwargs):
     """
-    Loads any CSV or Excel file.
+    Loads any CSV file.
     """
     try:
-        # --- THIS IS THE FIX ---
+        # We only need to read CSVs now
         if file_path.endswith('.csv'):
             return pd.read_csv(file_path, **kwargs)
-        elif file_path.endswith('.xlsx'):
-            return pd.read_excel(file_path, **kwargs)
         else:
-            st.error(f"Error: Unknown file type for {file_path}. Please use .csv or .xlsx")
+            st.error(f"Error: Unknown file type for {file_path}. Please use .csv")
             return pd.DataFrame()
-        # -----------------------
+            
     except FileNotFoundError:
         st.error(f"Error: '{file_path}' not found in the GitHub repo.")
         return pd.DataFrame()
@@ -272,7 +270,7 @@ with tab3:
 
 # --- Tab 4: Final Evaluation (NEW TAB) ---
 with tab4:
-    st.header("Final Evaluation Test (on 'evaluation_final.xlsx')")
+    st.header("Final Evaluation Test (on 'evaluation_final.csv')")
     st.write("How does our model (trained on ISOT) perform on this new evaluation dataset?")
 
     if not df_evaluation.empty and model and vectorizer:
@@ -305,7 +303,7 @@ with tab4:
                 st.subheader("Final Validation Result")
                 if accuracy_flipped > accuracy_normal:
                     st.success(f"True Accuracy: {accuracy_flipped * 100:.2f}%")
-                    st.info("Insight: This dataset uses inverted labels (0=REAL, 1=FAKE), just like 'WELFake'.")
+                    st.info("Insight: This dataset uses inverted labels (0=REAL, 1=FAKE).")
                     cm = confusion_matrix(y_eval_flipped, y_eval_pred)
                     labels = ['FAKE (Actual)', 'REAL (Actual)']
                 else:
@@ -324,7 +322,7 @@ with tab4:
             except Exception as e:
                 st.error(f"An error occurred during evaluation: {e}")
     else:
-        st.error("Could not run validation. `evaluation_final.xlsx` not found or model not loaded.")
+        st.error("Could not run validation. `evaluation_final.csv` not found or model not loaded.")
 
 
 # --- Tab 5: About This Model ---
