@@ -9,6 +9,7 @@ import seaborn as sns
 from sklearn.metrics import accuracy_score, confusion_matrix
 import requests
 import os
+import numpy as np # <-- 1. ADDED THIS IMPORT
 
 # --- Import the ML libraries ---
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -148,11 +149,13 @@ df_evaluation = process_test_data(load_data(EVAL_FILE_PATH)) # <-- LOAD NEW FILE
 st.title("📰 The Real Fake News Detector")
 
 # --- Create Tabs ---
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+# <-- 2. UPDATED THIS LINE
+tab1, tab2, tab3, tab4, tab_viz, tab5 = st.tabs([
     "📰 News Analyzer", 
     "📊 Visual Insights", 
     "🔍 Cross-Validation (WELFake)", 
-    "🧪 Final Evaluation",  # <-- NEW TAB
+    "🧪 Final Evaluation",
+    "📊 CSV Visualizer",  # <-- NEW TAB
     "ℹ️ About This Model"
 ])
 
@@ -325,6 +328,91 @@ with tab4:
         st.error("Could not run validation. `evaluation_final.csv` not found or model not loaded.")
 
 
+# --- Tab (NEW): CSV Visualizer ---
+# <-- 3. ADDED THIS ENTIRE BLOCK
+with tab_viz:
+    st.header("🚀 Instant CSV Visualizer")
+    st.write("Drag and drop a CSV file here to see basic visualizations.")
+
+    # Add file uploader
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv", key="csv_visualizer")
+
+    if uploaded_file is not None:
+        try:
+            # Read CSV
+            df_viz = pd.read_csv(uploaded_file)
+            st.success("File uploaded and read successfully!")
+            
+            # Show dataframe preview
+            st.subheader("Raw Data Preview")
+            st.dataframe(df_viz.head())
+            
+            # Show basic stats
+            st.subheader("Data Description (Numeric Columns)")
+            try:
+                st.write(df_viz.describe())
+            except Exception as e:
+                st.info(f"Could not generate numeric description: {e}")
+            
+            # --- Visualization Options ---
+            st.subheader("Create Visualizations")
+            
+            all_columns = df_viz.columns.tolist()
+            numeric_columns = df_viz.select_dtypes(include=np.number).columns.tolist()
+            
+            if not numeric_columns:
+                st.warning("No numeric columns found in this CSV for plotting line, area, or scatter charts.")
+            
+            # 1. Line/Area Chart
+            st.markdown("---")
+            st.write("### Line / Area Chart")
+            st.info("Best for time series or showing trends. Select one or more numeric columns.")
+            
+            if numeric_columns:
+                cols_to_plot = st.multiselect("Select numeric columns to plot", numeric_columns, key='viz_line_multi')
+                if cols_to_plot:
+                    chart_type = st.radio("Select chart type", ["Line Chart", "Area Chart"], key='viz_line_radio')
+                    if chart_type == "Line Chart":
+                        st.line_chart(df_viz[cols_to_plot])
+                    else:
+                        st.area_chart(df_viz[cols_to_plot])
+            else:
+                st.info("This chart type requires numeric columns.")
+
+            # 2. Bar Chart (Value Counts)
+            st.markdown("---")
+            st.write("### Bar Chart (Value Counts)")
+            st.info("Best for seeing the frequency of items in a single categorical column.")
+            cat_col = st.selectbox("Select a column to see its value counts", [None] + all_columns, key='viz_bar_select')
+            if cat_col:
+                try:
+                    st.bar_chart(df_viz[cat_col].value_counts())
+                except Exception as e:
+                    st.error(f"Could not plot bar chart for '{cat_col}': {e}")
+
+
+            # 3. Scatter Plot (2 Variables)
+            if len(numeric_columns) >= 2:
+                st.markdown("---")
+                st.write("### Scatter Plot")
+                st.info("Best for comparing two numeric variables.")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    x_axis = st.selectbox("Select X-axis", [None] + numeric_columns, key='viz_scatter_x')
+                with col2:
+                    y_axis = st.selectbox("Select Y-axis", [None] + numeric_columns, key='viz_scatter_y')
+                
+                if x_axis and y_axis:
+                    st.scatter_chart(df_viz, x=x_axis, y=y_axis)
+            else:
+                st.markdown("---")
+                st.info("A Scatter Plot requires at least two numeric columns in your data.")
+            
+        except Exception as e:
+            st.error(f"An error occurred while processing the file: {e}")
+
+
 # --- Tab 5: About This Model ---
 with tab5:
     st.header("About Our Model (Trained on 10% Sample)")
@@ -348,4 +436,3 @@ with tab5:
             
     else:
         st.error("Could not load ISOT data.")
-
